@@ -43,10 +43,10 @@ poetry run alembic downgrade -1
 
 ```bash
 # Development (with hot reload)
-poetry run uvicorn src.main:app --reload --port 8000
+PYTHONPATH=src poetry run uvicorn main:app --reload --port 8000
 
 # Production (with Gunicorn)
-poetry run gunicorn src.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+PYTHONPATH=src poetry run gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 ```
 
 ## Project Structure

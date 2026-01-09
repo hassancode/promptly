@@ -42,7 +42,7 @@ class OpenAIAdapter(ProviderAdapter):
         return "openai"
 
     def get_model_name(self) -> str:
-        return "gpt-4"  # Can be configured
+        return "gpt-4o"  # Uses gpt-4o for web search support
 
     def supports_citations(self) -> bool:
         return True  # OpenAI supports web search with citations
@@ -81,48 +81,39 @@ class OpenAIAdapter(ProviderAdapter):
                 extra={"provider": "openai", "brand": brand_name}
             )
 
-            # Call OpenAI API
-            # TODO: Replace with actual OpenAI API call with web search
-            # For now, using a simple completion
-            response = self.client.chat.completions.create(
-                model=self.get_model_name(),
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant analyzing brand mentions and visibility."
-                    },
-                    {
-                        "role": "user",
-                        "content": enhanced_prompt
-                    }
-                ],
-                max_tokens=1000,
-                temperature=0.7
+            # Call OpenAI Responses API with web search tool
+            response = self.client.responses.create(
+                model="gpt-4o",
+                tools=[{"type": "web_search"}],
+                instructions="You are a helpful assistant analyzing brand mentions and visibility. Cite sources when possible.",
+                input=enhanced_prompt
             )
 
-            # Extract answer
-            answer_text = response.choices[0].message.content
-
-            # Extract citations (if available from web search)
+            # Extract answer and citations from web search response
+            answer_text = self._extract_answer_from_response(response)
             citations = self.extract_citations(response)
 
             # Normalize response
             normalized_answer = self.normalize_response(answer_text, citations)
+
+            # Build metadata from response
+            metadata = {
+                "model": self.get_model_name(),
+                "web_search_enabled": True
+            }
+            if hasattr(response, 'usage') and response.usage:
+                metadata["usage"] = {
+                    "input_tokens": getattr(response.usage, 'input_tokens', 0),
+                    "output_tokens": getattr(response.usage, 'output_tokens', 0),
+                    "total_tokens": getattr(response.usage, 'total_tokens', 0)
+                }
 
             return ProviderQueryResult(
                 provider=self.get_provider_name(),
                 model_name=self.get_model_name(),
                 answer_text=normalized_answer,
                 citations=citations,
-                metadata={
-                    "model": self.get_model_name(),
-                    "finish_reason": response.choices[0].finish_reason,
-                    "usage": {
-                        "prompt_tokens": response.usage.prompt_tokens,
-                        "completion_tokens": response.usage.completion_tokens,
-                        "total_tokens": response.usage.total_tokens
-                    }
-                },
+                metadata=metadata,
                 citation_coverage=self.calculate_citation_coverage(citations),
                 status="success"
             )
@@ -167,22 +158,90 @@ Please provide a comprehensive answer that specifically mentions these brands wh
 
         return enhanced
 
-    def extract_citations(self, raw_response: Any) -> List[CitationCreate]:
+    def _extract_answer_from_response(self, response: Any) -> str:
         """
-        Extract citations from OpenAI response
+        Extract answer text from OpenAI Responses API response
 
-        Note: This is a placeholder. OpenAI web search responses
-        would include citations that need to be extracted.
+        The Responses API returns output items that may include
+        message content and web search results.
 
         Args:
-            raw_response: Raw OpenAI response object
+            response: OpenAI Responses API response object
 
         Returns:
-            List of citations
+            Extracted answer text
         """
-        # TODO: Extract actual citations from OpenAI web search results
-        # For now, return empty list
-        return []
+        answer_parts = []
+
+        try:
+            # Responses API returns output as a list of items
+            if hasattr(response, 'output') and response.output:
+                for item in response.output:
+                    # Handle message output items
+                    if hasattr(item, 'type') and item.type == 'message':
+                        if hasattr(item, 'content') and item.content:
+                            for content_block in item.content:
+                                if hasattr(content_block, 'text'):
+                                    answer_parts.append(content_block.text)
+                    # Handle text output directly
+                    elif hasattr(item, 'text'):
+                        answer_parts.append(item.text)
+
+            # Fallback: try output_text attribute
+            if not answer_parts and hasattr(response, 'output_text'):
+                return response.output_text
+
+        except Exception as e:
+            logger.warning(f"Failed to extract answer from OpenAI response: {e}")
+
+        return "\n".join(answer_parts) if answer_parts else ""
+
+    def extract_citations(self, raw_response: Any) -> List[CitationCreate]:
+        """
+        Extract citations from OpenAI Responses API web search results
+
+        The web_search tool returns results with URLs, titles, and snippets
+        that can be extracted as citations.
+
+        Args:
+            raw_response: Raw OpenAI Responses API response object
+
+        Returns:
+            List of citations extracted from web search results
+        """
+        citations = []
+
+        try:
+            if not hasattr(raw_response, 'output') or not raw_response.output:
+                return citations
+
+            position = 0
+            for item in raw_response.output:
+                # Look for web_search_call results
+                if hasattr(item, 'type') and item.type == 'web_search_call':
+                    # Web search results may be in the item's results
+                    if hasattr(item, 'results') and item.results:
+                        for result in item.results:
+                            url = getattr(result, 'url', '') or result.get('url', '') if isinstance(result, dict) else ''
+                            title = getattr(result, 'title', '') or result.get('title', 'Source') if isinstance(result, dict) else 'Source'
+                            snippet = getattr(result, 'snippet', '') or result.get('snippet', '') if isinstance(result, dict) else ''
+
+                            if url:
+                                citations.append(
+                                    CitationCreate(
+                                        url=url,
+                                        title=title,
+                                        snippet=snippet,
+                                        source_type="web",
+                                        position=position
+                                    )
+                                )
+                                position += 1
+
+        except Exception as e:
+            logger.warning(f"Failed to extract OpenAI citations: {e}")
+
+        return citations
 
     def _mock_response(
         self,

@@ -73,6 +73,7 @@ services:
       - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
       - GOOGLE_AI_CX=${GOOGLE_AI_CX:-}
       - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - PYTHONPATH=/app/src
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,7 +81,7 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
