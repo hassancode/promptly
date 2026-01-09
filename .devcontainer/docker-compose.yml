@@ -1,0 +1,38 @@
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    environment:
+      - DATABASE_URL=postgresql://promptly:promptly_dev@db:5432/promptly
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=dev_secret_key_change_in_production_12345
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - CORS_ORIGINS=http://localhost:3000
+      - ENABLED_PROVIDERS=claude
+      - LOG_LEVEL=INFO
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: promptly
+      POSTGRES_PASSWORD: promptly_dev
+      POSTGRES_DB: promptly
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
