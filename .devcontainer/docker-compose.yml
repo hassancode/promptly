@@ -13,6 +13,11 @@ services:
       - CORS_ORIGINS=http://localhost:3000
       - ENABLED_PROVIDERS=claude
       - LOG_LEVEL=INFO
+      # AI Provider keys (set via GitHub Codespaces Secrets)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
     depends_on:
       - db
       - redis

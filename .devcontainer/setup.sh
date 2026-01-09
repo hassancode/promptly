@@ -21,6 +21,24 @@ if [ ! -f .env ]; then
     sed -i 's|SECRET_KEY=.*|SECRET_KEY=dev_secret_key_change_in_production_12345|' .env
 fi
 
+# Add API keys from Codespaces secrets if available
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+    sed -i "s|ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY|" .env
+    echo "Added ANTHROPIC_API_KEY from Codespaces secrets"
+fi
+if [ -n "$OPENAI_API_KEY" ]; then
+    sed -i "s|OPENAI_API_KEY=.*|OPENAI_API_KEY=$OPENAI_API_KEY|" .env
+    echo "Added OPENAI_API_KEY from Codespaces secrets"
+fi
+if [ -n "$GOOGLE_API_KEY" ]; then
+    sed -i "s|GOOGLE_API_KEY=.*|GOOGLE_API_KEY=$GOOGLE_API_KEY|" .env
+    echo "Added GOOGLE_API_KEY from Codespaces secrets"
+fi
+if [ -n "$PERPLEXITY_API_KEY" ]; then
+    sed -i "s|PERPLEXITY_API_KEY=.*|PERPLEXITY_API_KEY=$PERPLEXITY_API_KEY|" .env
+    echo "Added PERPLEXITY_API_KEY from Codespaces secrets"
+fi
+
 # Install Python dependencies
 poetry install
 
