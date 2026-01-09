@@ -22,18 +22,34 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     PERPLEXITY_API_KEY: Optional[str] = None
     HUGGINGFACE_API_KEY: Optional[str] = None
+    GOOGLE_AI_API_KEY: Optional[str] = None
+    GOOGLE_AI_CX: Optional[str] = None
 
     # Provider Configuration
     ENABLED_PROVIDERS: str = "openai,claude,gemini,perplexity,google_ai,huggingface"
+    PROVIDER_TIMEOUT_SECONDS: int = 30
+    ANALYSIS_TIMEOUT_SECONDS: int = 120
 
     # Application
     ENVIRONMENT: str = "development"
     SECRET_KEY: str = "change_this_in_production_very_important"
     DEBUG: bool = True
 
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:3000"
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"
+
+    # Rate Limiting
+    ANALYSIS_RATE_LIMIT: int = 10
+    RATE_LIMIT_WINDOW_SECONDS: int = 3600
+
     model_config = ConfigDict(
         env_file=".env",
         case_sensitive=True,
+        extra="ignore",  # Ignore extra env vars not defined here
     )
 
 
