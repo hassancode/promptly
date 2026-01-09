@@ -1,0 +1,286 @@
+openapi: 3.0.3
+info:
+  title: Promptly API
+  description: AI Search Visibility & Competitive Insight Platform
+  version: 0.1.0
+  contact:
+    name: Promptly Team
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.promptly.com
+    description: Production server
+
+tags:
+  - name: auth
+    description: Authentication endpoints
+  - name: analyses
+    description: Analysis management
+  - name: insights
+    description: Insight generation and retrieval
+
+paths:
+  # Authentication
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Register new user
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: User login
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: User logout
+      operationId: logoutUser
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user
+      operationId: getCurrentUser
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Analyses
+  /api/v1/analyses:
+    post:
+      tags: [analyses]
+      summary: Create new analysis
+      operationId: createAnalysis
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisCreateRequest'
+      responses:
+        '201':
+          description: Analysis created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+
+  /api/v1/analyses/{analysisId}/start:
+    post:
+      tags: [analyses]
+      summary: Start analysis execution
+      operationId: startAnalysis
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Analysis started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+
+  /api/v1/analyses/{analysisId}/insights/generate:
+    post:
+      tags: [insights]
+      summary: Generate insights for analysis
+      operationId: generateInsights
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AnalysisId'
+      responses:
+        '200':
+          description: Insights generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsResponse'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: promptly_session
+
+  parameters:
+    AnalysisId:
+      name: analysisId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # Authentication
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+
+    # Analyses
+    AnalysisCreateRequest:
+      type: object
+      required:
+        - brand_name
+      properties:
+        brand_name:
+          type: string
+          maxLength: 100
+
+    AnalysisResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        brand_name:
+          type: string
+        status:
+          type: string
+          enum: [draft, running, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+
+    # Insights
+    InsightsResponse:
+      type: object
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+        insights:
+          type: array
+          items:
+            type: object
+        recommendations:
+          type: array
+          items:
+            type: object
+
+    # Common
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        status_code:
+          type: integer
+        details:
+          type: object
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
