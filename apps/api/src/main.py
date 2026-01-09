@@ -114,13 +114,21 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 # CORS configuration
 allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
-if settings.ENVIRONMENT == "production":
-    # Add production origins here
-    pass
+
+# Add origins from CORS_ORIGINS env var
+if settings.CORS_ORIGINS:
+    allowed_origins.extend([o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()])
+
+# In development, allow Codespaces URLs
+allow_origin_regex = None
+if settings.ENVIRONMENT == "development":
+    # Allow GitHub Codespaces URLs (*.app.github.dev)
+    allow_origin_regex = r"https://.*\.app\.github\.dev"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
