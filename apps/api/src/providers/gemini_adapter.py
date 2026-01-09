@@ -1,7 +1,7 @@
 """
 Google Gemini Provider Adapter
 
-Adapter for querying Google Gemini with grounding (web search).
+Adapter for querying Google Gemini with grounding (Google Search).
 """
 import os
 from typing import List, Dict, Any, Optional
@@ -16,7 +16,8 @@ class GeminiAdapter(ProviderAdapter):
     """
     Google Gemini provider adapter
 
-    Uses Gemini Pro with grounding for web search and citations.
+    Uses Gemini 2.0 Flash with Google Search grounding for real-time
+    web information and citations.
     """
 
     def __init__(self):
@@ -41,10 +42,10 @@ class GeminiAdapter(ProviderAdapter):
         return "gemini"
 
     def get_model_name(self) -> str:
-        return "gemini-pro"
+        return "gemini-2.0-flash"
 
     def supports_citations(self) -> bool:
-        return True  # Gemini supports grounding with citations
+        return True  # Gemini supports grounding with Google Search citations
 
     async def query(
         self,
@@ -54,7 +55,7 @@ class GeminiAdapter(ProviderAdapter):
         context: Optional[Dict[str, Any]] = None
     ) -> ProviderQueryResult:
         """
-        Query Google Gemini with grounding
+        Query Google Gemini with Google Search grounding
 
         Args:
             prompt: User's query prompt
@@ -63,7 +64,7 @@ class GeminiAdapter(ProviderAdapter):
             context: Optional context
 
         Returns:
-            ProviderQueryResult with answer and citations
+            ProviderQueryResult with answer and citations from Google Search
         """
         try:
             if not self.client:
@@ -75,15 +76,24 @@ class GeminiAdapter(ProviderAdapter):
             )
 
             logger.info(
-                f"Querying Gemini: {enhanced_prompt[:100]}...",
+                f"Querying Gemini with Google Search grounding: {enhanced_prompt[:100]}...",
                 extra={"provider": "gemini", "brand": brand_name}
             )
 
-            # Call Gemini API with grounding
-            model = self.client.GenerativeModel('gemini-pro')
+            # Configure Google Search grounding tool
+            from google.generativeai.types import Tool
 
-            # Note: Grounding configuration would go here
-            # For now, using basic generation
+            google_search_tool = Tool(
+                google_search=self.client.protos.GoogleSearch()
+            )
+
+            # Create model with grounding
+            model = self.client.GenerativeModel(
+                model_name=self.get_model_name(),
+                tools=[google_search_tool]
+            )
+
+            # Generate content with grounding
             response = model.generate_content(enhanced_prompt)
 
             # Extract answer
@@ -103,7 +113,8 @@ class GeminiAdapter(ProviderAdapter):
                 metadata={
                     "model": self.get_model_name(),
                     "grounding_enabled": True,
-                    "finish_reason": "stop"
+                    "google_search": True,
+                    "finish_reason": getattr(response.candidates[0], 'finish_reason', 'stop') if response.candidates else "stop"
                 },
                 citation_coverage=self.calculate_citation_coverage(citations),
                 status="success"
@@ -142,15 +153,61 @@ Please provide a comprehensive answer that addresses the question while mentioni
         """
         Extract citations from Gemini grounding metadata
 
+        Gemini with Google Search grounding returns grounding_metadata
+        containing search_entry_point and grounding_chunks with web sources.
+
         Args:
             raw_response: Gemini response object
 
         Returns:
             List of citations from grounding sources
         """
-        # TODO: Extract actual grounding sources when available
-        # Gemini with grounding returns citation metadata
-        return []
+        citations = []
+
+        try:
+            if not hasattr(raw_response, 'candidates') or not raw_response.candidates:
+                return citations
+
+            candidate = raw_response.candidates[0]
+
+            # Check for grounding metadata
+            if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                grounding = candidate.grounding_metadata
+
+                # Extract from grounding_chunks (web sources)
+                if hasattr(grounding, 'grounding_chunks') and grounding.grounding_chunks:
+                    for idx, chunk in enumerate(grounding.grounding_chunks):
+                        if hasattr(chunk, 'web') and chunk.web:
+                            web_source = chunk.web
+                            url = getattr(web_source, 'uri', '') or getattr(web_source, 'url', '')
+                            title = getattr(web_source, 'title', 'Source')
+
+                            if url:
+                                citations.append(
+                                    CitationCreate(
+                                        url=url,
+                                        title=title,
+                                        snippet="",  # Gemini doesn't provide snippets in grounding
+                                        source_type="web",
+                                        position=idx
+                                    )
+                                )
+
+                # Also check grounding_supports for inline citations
+                if hasattr(grounding, 'grounding_supports') and grounding.grounding_supports:
+                    existing_urls = {c.url for c in citations}
+                    for support in grounding.grounding_supports:
+                        if hasattr(support, 'grounding_chunk_indices'):
+                            # These reference the grounding_chunks we already processed
+                            pass
+                        if hasattr(support, 'web_search_queries'):
+                            # Store search queries in metadata if needed
+                            pass
+
+        except Exception as e:
+            logger.warning(f"Failed to extract Gemini citations: {e}")
+
+        return citations
 
     def _mock_response(
         self,

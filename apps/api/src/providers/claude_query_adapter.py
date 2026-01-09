@@ -1,7 +1,7 @@
 """
 Claude Query Provider Adapter
 
-Adapter for querying Claude AI with search capabilities.
+Adapter for querying Claude AI with web search capabilities.
 """
 import os
 from typing import List, Dict, Any, Optional
@@ -16,7 +16,8 @@ class ClaudeQueryAdapter(ProviderAdapter):
     """
     Claude query adapter
 
-    Uses Anthropic's Claude models with search capabilities.
+    Uses Anthropic's Claude models with web search tool for real-time
+    information retrieval and citations.
     """
 
     def __init__(self):
@@ -40,10 +41,10 @@ class ClaudeQueryAdapter(ProviderAdapter):
         return "claude"
 
     def get_model_name(self) -> str:
-        return "claude-3-5-sonnet-20241022"
+        return "claude-sonnet-4-20250514"
 
     def supports_citations(self) -> bool:
-        return True  # Claude can provide citations when using search
+        return True  # Claude provides citations via web search tool
 
     async def query(
         self,
@@ -53,7 +54,7 @@ class ClaudeQueryAdapter(ProviderAdapter):
         context: Optional[Dict[str, Any]] = None
     ) -> ProviderQueryResult:
         """
-        Query Claude AI
+        Query Claude AI with web search
 
         Args:
             prompt: User's query prompt
@@ -62,7 +63,7 @@ class ClaudeQueryAdapter(ProviderAdapter):
             context: Optional context
 
         Returns:
-            ProviderQueryResult with answer and citations
+            ProviderQueryResult with answer and citations from web search
         """
         try:
             if not self.client:
@@ -74,15 +75,15 @@ class ClaudeQueryAdapter(ProviderAdapter):
             )
 
             logger.info(
-                f"Querying Claude: {enhanced_prompt[:100]}...",
+                f"Querying Claude with web search: {enhanced_prompt[:100]}...",
                 extra={"provider": "claude", "brand": brand_name}
             )
 
-            # Call Claude API
+            # Call Claude API with web search tool
             message = self.client.messages.create(
                 model=self.get_model_name(),
-                max_tokens=1500,
-                temperature=0.7,
+                max_tokens=4096,
+                tools=[{"type": "web_search_20250305"}],
                 messages=[
                     {
                         "role": "user",
@@ -91,10 +92,10 @@ class ClaudeQueryAdapter(ProviderAdapter):
                 ]
             )
 
-            # Extract answer
-            answer_text = message.content[0].text
+            # Extract answer from response content blocks
+            answer_text = self._extract_answer_from_response(message)
 
-            # Extract citations
+            # Extract citations from web search results
             citations = self.extract_citations(message)
 
             # Normalize response
@@ -108,6 +109,7 @@ class ClaudeQueryAdapter(ProviderAdapter):
                 metadata={
                     "model": self.get_model_name(),
                     "stop_reason": message.stop_reason,
+                    "web_search_enabled": True,
                     "usage": {
                         "input_tokens": message.usage.input_tokens,
                         "output_tokens": message.usage.output_tokens
@@ -124,6 +126,80 @@ class ClaudeQueryAdapter(ProviderAdapter):
                 extra={"provider": "claude"}
             )
             raise
+
+    def _extract_answer_from_response(self, message: Any) -> str:
+        """
+        Extract answer text from Claude response with web search
+
+        Args:
+            message: Claude API response object
+
+        Returns:
+            Extracted answer text
+        """
+        answer_parts = []
+
+        try:
+            for block in message.content:
+                if hasattr(block, 'type'):
+                    if block.type == 'text':
+                        answer_parts.append(block.text)
+        except Exception as e:
+            logger.warning(f"Failed to extract answer from Claude response: {e}")
+
+        return "\n".join(answer_parts) if answer_parts else ""
+
+    def extract_citations(self, raw_response: Any) -> List[CitationCreate]:
+        """
+        Extract citations from Claude web search results
+
+        Claude's web search tool returns results in content blocks with
+        type 'web_search_tool_result' containing search results.
+
+        Args:
+            raw_response: Claude API response object
+
+        Returns:
+            List of citations from web search results
+        """
+        citations = []
+
+        try:
+            if not hasattr(raw_response, 'content'):
+                return citations
+
+            position = 0
+            for block in raw_response.content:
+                if hasattr(block, 'type'):
+                    # Handle web search tool results
+                    if block.type == 'tool_use' and hasattr(block, 'name') and block.name == 'web_search':
+                        continue  # This is the tool call, not the result
+
+                    # Web search results come in server_tool_use blocks
+                    if block.type == 'web_search_tool_result':
+                        if hasattr(block, 'content') and block.content:
+                            for result in block.content:
+                                if hasattr(result, 'type') and result.type == 'web_search_result':
+                                    url = getattr(result, 'url', '')
+                                    title = getattr(result, 'title', 'Source')
+                                    snippet = getattr(result, 'snippet', '') or getattr(result, 'encrypted_content', '')
+
+                                    if url:
+                                        citations.append(
+                                            CitationCreate(
+                                                url=url,
+                                                title=title,
+                                                snippet=snippet[:500] if snippet else '',
+                                                source_type="web",
+                                                position=position
+                                            )
+                                        )
+                                        position += 1
+
+        except Exception as e:
+            logger.warning(f"Failed to extract Claude citations: {e}")
+
+        return citations
 
     def _build_enhanced_prompt(
         self,
